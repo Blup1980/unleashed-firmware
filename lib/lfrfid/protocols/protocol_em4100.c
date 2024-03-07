@@ -326,14 +326,63 @@ bool protocol_em4100_write_data(ProtocolEM4100* protocol, void* data) {
     return result;
 };
 
+uint16_t crc16(uint8_t* data, uint8_t len) {
+    uint16_t crc = 0;
+
+    uint8_t byte;
+
+    for(uint8_t i = 0; i < len; i++) {
+        uint8_t inbyte = data[i];
+        for(uint8_t j = 0; j < 8; j++) {
+            byte = crc & 0xFF;
+            uint8_t mix = (byte ^ inbyte) & 0x01;
+            crc = crc >> 1;
+            if(mix) crc = crc ^ 0xA001;
+
+            inbyte = inbyte >> 1;
+        }
+    }
+    return crc;
+}
+
+uint8_t crc8(uint8_t* addr, uint8_t len) {
+    uint8_t crc = 0;
+
+    for(uint8_t i = 0; i < len; i++) {
+        uint8_t inbyte = addr[i];
+        for(uint8_t j = 0; j < 8; j++) {
+            uint8_t mix = (crc ^ inbyte) & 0x01;
+            crc >>= 1;
+            if(mix) crc ^= 0x8C;
+
+            inbyte >>= 1;
+        }
+    }
+    return crc;
+}
+
+uint8_t reverse(uint8_t b) {
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+    b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+    return b;
+}
+
 void protocol_em4100_render_data(ProtocolEM4100* protocol, FuriString* result) {
     uint8_t* data = protocol->data;
     furi_string_printf(
-        result,
-        "FC: %03u, Card: %05u\n(RF/%u)",
-        data[2],
-        (uint16_t)((data[3] << 8) | (data[4])),
-        protocol->clock_per_bit);
+        result, "FC: %03u, Card: %05u", data[2], (uint16_t)((data[3] << 8) | (data[4])));
+    furi_string_cat_printf(result, "\nBrainy:");
+    uint8_t ibuttonData[8];
+    ibuttonData[0] = 0x01;
+    ibuttonData[6] = 0x00;
+    for(uint8_t i = 0; i < 5; i++) {
+        ibuttonData[5 - i] = data[i];
+    }
+    ibuttonData[7] = crc8(&ibuttonData[0], 7);
+    for(uint8_t i = 0; i < 8; i++) {
+        furi_string_cat_printf(result, "%02X", reverse(ibuttonData[i]));
+    }
 };
 
 const ProtocolBase protocol_em4100 = {
